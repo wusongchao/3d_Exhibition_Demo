@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>demo</title>
+	<style type="text/css">
+		body{
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+			display: flex;
+			justify-content:center;
+		}
+		canvas{
+			z-index: 10;
+		}
+		.btn_line{
+			position: absolute;
+			bottom: 0px;
+			left: 0px;
+			/*background-color: black;*/
+		}
+		.large_ico{
+			background: rgba(34,34,34,0.65) !important;
+			cursor: pointer;
+		}
+		.large_ico >li >a >span{
+			font-size: 20px;
+			color:white;
+		}
+		#hint_div{
+			border-radius: 50%;
+			z-index: 100;
+			display: none;
+			position: absolute;
+ 			align-self: center;
+			background:rgba(34,34,34,0.65);
+			padding:35px;
+		}
+		#hint_div >h4{
+			color:white;
+		}
+		#hint_div >h4 >span{
+			font-size: 20px;
+		}
+	</style>
+	<link rel=stylesheet href="css/bootstrap.min.css">
+	<link href="css/bootstrap-theme.min.css" rel="stylesheet"/>
+	<script type="text/javascript" src="js/bootstrap.min.js"></script>
+	<script type="text/javascript" src="js/jquery-3.1.1.min.js"></script>
+	
+	<script type="text/javascript" src="js/three.js"></script>
+	<script type="text/javascript" src="js/stats.min.js"></script>
+	<script type="text/javascript" src="js/MTLLoader.js"></script>
+	<script type="text/javascript" src="js/OBJLoader.js"></script>
+	<script type="text/javascript">
+		var camera,
+			scene,
+			renderer,
+			clock;
+		var container = null;
+		var inmotion = false;
+		var inmotionX = false;
+		var inmotionY = false;
+		var startX,
+			startY;
+		var stat;
+		var cube, 
+			testcube;
+
+		var border = [];
+
+		// mesh响应鼠标
+		var INTERSECTED;
+		var raycaster;
+		var mouse;
+
+		var keyboard_situation = {
+			moveForward:{
+				enable:true,
+				in:false
+			},
+			moveLeft:{
+				enable:true,
+				in:false
+			},
+			moveRight:{
+				enable:true,
+				in:false
+			},
+			moveBackward:{
+				enable:true,
+				in:false
+			}
+		};
+
+		var moveSpeed = 0.01;
+
+		function init() {
+			getFullScreen();
+
+			container = document.createElement("div");
+			// container.id = "canvas_wrapper";
+			document.body.appendChild(container);
+
+			renderer = new THREE.WebGLRenderer({
+				antialias:true
+			});
+			renderer.setSize( window.innerWidth,window.innerHeight);
+			container.appendChild(renderer.domElement);
+
+			renderer.domElement.addEventListener("mousedown",onMouseDown,false);
+			renderer.domElement.addEventListener("mousemove",onMouseMove,false);
+			renderer.domElement.addEventListener("mouseup",onMouseUp,false);
+
+			document.body.addEventListener("keydown",onKeyDown,false);
+			document.body.addEventListener("keyup",onKeyUp,false);
+			
+			renderer.domElement.addEventListener("click",onCanvasClick,false);
+			window.addEventListener("resize",onWindowResize,false);
+
+			document.getElementById("bottom_helper").addEventListener("click",onHelperClick,false);
+			// stat = new Stats();
+			// stat.domElement.style.position = "absolute";
+			// stat.domElement.style.right = "0px";
+			// stat.domElement.style.top = "0px";
+			// document.body.appendChild(stat.domElement);
+
+			// // load material and mesh
+			// var mtlLoader = new THREE.MTLLoader();   
+		 //    mtlLoader.load( 'lib/test.mtl', function(materials){  
+		 //    	materials.preload();  
+		  
+			// 	var objLoader = new THREE.OBJLoader();  
+		 //   		objLoader.setMaterials( materials );  
+		 //    	objLoader.setPath( 'obj/' );  
+		 //    	objLoader.load( 'test.obj', function(object) {  
+		 //        scene.add( object );  
+		  
+		 //        }, onProgress, onError );  
+		  
+		 //    });  
+
+			camera = new THREE.PerspectiveCamera(45,window.innerWidth/window.innerHeight,0.1,100);
+			camera.position.set(0,0,0);
+
+			clock = new THREE.Clock();
+
+			raycaster = new THREE.Raycaster();
+			mouse = new THREE.Vector2();
+
+			scene = new THREE.Scene();
+
+			var materials = [];
+			for(var i=1;i<=6;i++){
+				materials.push(new THREE.MeshBasicMaterial({
+					map:THREE.ImageUtils.loadTexture("img/demo" + i +".jpg"),
+					side:THREE.DoubleSide
+				}))
+			}
+
+			cube = new THREE.Mesh(new THREE.CubeGeometry(5,5,5),new THREE.MeshFaceMaterial(materials));
+			scene.add(cube);
+
+			testcube = new THREE.Mesh(new THREE.CubeGeometry(0.1,0.1,0.1),new THREE.MeshBasicMaterial({
+				color:0xff0000,
+				wireframe:true
+			}))
+			testcube.position.set(0,0,-1);
+			testcube.rotation.z = -0.1;
+			testcube.rotation.x = 0.2;
+			testcube.rotation.y = 0.2;
+			scene.add(testcube);
+
+			buildBorder(cube);
+
+			setInterval(checkKeyboardStatus,10);
+
+			draw(cube);
+		}
+
+		function draw(obj) {
+			// checkKeyboardStatus();
+			keyboardUpdate(camera);
+			raycaster.setFromCamera(mouse, camera);
+			var intersects = raycaster.intersectObjects(scene.children);// 射线穿过物体的一个list
+			// 如果列表不为空，那么所返回的数组中的第一个对象就是第一个与投射光线相交的对象(“最上面的”)
+			if(intersects.length>0){
+				if(intersects[0] !== cube){
+					INTERSECTED = intersects[0].object;
+					container.style.cursor = "pointer";
+					intersects[0].object.material.color.set(0xffff00);
+				}
+			}else{
+				if(INTERSECTED){
+					container.style.cursor = "auto";
+					INTERSECTED.material.color.set(0xff0000);
+					INTERSECTED = null;
+				}
+			}
+
+			renderer.render(scene,camera);
+			requestAnimationFrame(function() {
+				// console.log(checkBorder(camera));
+				// console.log(keyboard_situation.moveLeft.enable);
+				draw(obj);
+			})
+		}
+
+		function onHelperClick(event) {
+			// event.preventDefault();
+			target = event.target;
+			var check = "";
+			if(target.tagName.toLowerCase()==="a"){
+				//tagName始终返回大写，不计算文本节点
+				check = target.id;
+			}
+			else{
+				if(target.parentNode){
+					check = target.parentNode.id;
+				}
+			}
+			switch(check){
+				case "show_hint": 
+					showHint();
+					break;
+				case "volume":
+					audioControl();
+					break;
+				case "full_screen":
+					myFullScreen();
+					break;
+				case "operation_mode":
+					break;
+			}
+		}
+		
+		function showHint() {
+			var hint = document.getElementById("hint_div");
+			if(hint.style.display === "none"){
+				displayHint(hint);
+			}
+			else{
+				cancelHint(hint);
+			}
+		}
+
+		function onMouseDown(event) {
+			// event.preventDefault();
+			inmotion = true;
+			startX = event.clientX;
+			startY = event.clientY;
+		}
+
+
+		function onMouseMove(event) {
+			event.preventDefault();
+
+			// calculate mouse position in normalized device coordinates
+			// (-1 to +1) for both components
+			mouse.x = (event.clientX /window.innerWidth)*2-1;
+			mouse.y = -(event.clientY / window.innerHeight)*2+1;
+
+			if(inmotionX||inmotionY){
+				if(inmotionX) {
+					onMouseMoveX(event);
+				}
+				else{
+					onMouseMoveY(event);
+				} 
+			}
+			else{
+				if(inmotion){
+					if(startX!=event.clientX){
+						inmotionX = true;
+					}
+					else if(startY!=event.clientY){
+						inmotionY = true;
+					}
+				}
+			}
+		}
+
+		function onMouseMoveX(event) {
+			var tempX = event.clientX;
+			if(inmotionX){
+				camera.rotation.y += (event.clientX-startX)/1000;
+			}
+			// calculate mouse position in normalized device coordinates
+			// (-1 to +1) for both components
+			mouse.x = (event.clientX /window.innerWidth)*2-1;
+			mouse.y = -(event.clientY / window.innerHeight)*2+1;
+			startX = tempX;
+		}
+
+		function onMouseMoveY(event) {
+			var tempY = event.clientY;
+			if(inmotionY){
+				camera.rotation.x += (event.clientY-startY)/1000;
+			}
+			// calculate mouse position in normalized device coordinates
+			// (-1 to +1) for both components
+			mouse.x = (event.clientX /window.innerWidth)*2-1;
+			mouse.y = -(event.clientY / window.innerHeight)*2+1;
+			startY = tempY;
+		}
+
+		function onMouseUp(event) {
+			event.preventDefault();
+			if(inmotion){
+				inmotion = false;
+			}
+			if(inmotionX){
+				inmotionX = false;
+			}
+			if(inmotionY){
+				inmotionY = false;
+			}
+		}
+
+		function onCanvasClick(event) {
+			event.preventDefault();
+			var hint = document.getElementById("hint_div");
+			if(INTERSECTED){
+				displayHint(hint);
+			}else{
+				cancelHint(hint);
+			}
+		}
+
+		function onWindowResize(event) {
+			camera.aspect = window.innerWidth/window.innerHeight;
+			camera.updateProjectionMatrix();
+			// 更新投影矩阵，当相机的参数被更改后,必须调用此方法
+			renderer.setSize( window.innerWidth, window.innerHeight );
+		}
+
+		function displayHint(domElement) {
+			domElement.style.display = "block";
+		}
+
+		function cancelHint(domElement) {
+			domElement.style.display = "none";
+		}
+
+		function getFullScreen() {
+			var de = document.body;
+			de.requestFullScreen = de.requestFullScreen
+			||de.webkitRequestFullScreen
+			||de.mozRequestFullScreen;
+		}
+
+		function myFullScreen() {
+			var de = document.body;
+ 			de.requestFullScreen();
+		}
+
+		function audioControl() {
+			var audio_player = document.getElementById("audio_player");
+			if(audio_player.paused){
+				audio_player.play();
+			}
+			else{
+				audio_player.pause();
+			}
+		}
+
+		function buildBorder(room) {
+			var temp = room.geometry.vertices;
+
+			//基于顶点边界构建数组
+			for(var i=0,len = temp.length;i<len;i++){
+				border.push({
+					x:temp[i].x*0.8,
+					z:temp[i].z*0.8});
+			}
+		}
+
+		function checkBorder(obj) {
+			// 若为向量
+			if(obj.x){
+				var p = {
+					x:obj.x,
+					z:obj.z
+				};	
+			}
+			else{
+				var p = {
+					x:obj.position.x,
+					z:obj.position.z
+				};	
+			}
+
+			var flag = false;
+			// 若相交次数为奇数,flag === true
+
+			for(var i=0,len=border.length,j=len-1;i<len;j=i,i++){
+				var x1 = border[i].x,
+					z1 = border[i].z,
+					x2 = border[j].x,
+					z2 = border[j].z;
+
+				//表示点与顶点重合
+				if((x1 === p.x && z1 === p.z) || 
+					(x2 === p.x && z2 === p.z)) {
+        			return "on";
+      			}
+
+      			// 判断线段两端点是否在射线两侧(即射线是否穿过线段)
+      			// 等号的情况是规定点若在射线上，则属于射线以上的一侧
+      			// 射线沿x轴正方向
+      			if((z1 < p.z && z2 >= p.z) 
+      				|| (z1 >= p.z && z2 < p.z)){
+      				// 求y=a与线段相交点的横坐标
+      				// (x-x1)/(x2-x1)=(y-y1)/(y2-y1)
+      				var x = x1 + (p.z - z1) * (x2 - x1) / (z2 - z1)
+
+      				// 点在多边形的边上
+        			if(x-0.1 <= p.x && p.x <= x + 0.1) {
+          				return "on";
+        			}
+
+        			// 穿过边界
+        			if(x > p.x){
+        				flag = !flag;
+        			}
+      			}
+			}
+			return flag ? "in" : "out";
+		}
+
+		// keyboard control
+		function onKeyDown(event) {
+			switch ( event.keyCode ) {
+				case 38: /*up*/
+				case 87: /*W*/ 
+					if(keyboard_situation.moveForward.enable){
+						keyboard_situation.moveForward.in = true; 
+					}
+					else{
+						keyboard_situation.moveForward.in = false; 
+					}
+					break;
+
+				case 37: /*left*/
+				case 65: /*A*/ 
+					if(keyboard_situation.moveLeft.enable){
+						keyboard_situation.moveLeft.in = true; 
+					}
+					else{
+						keyboard_situation.moveLeft.in = false;
+					}
+					break;
+
+				case 40: /*down*/
+				case 83: /*S*/ 
+					if(keyboard_situation.moveBackward.enable){
+						keyboard_situation.moveBackward.in = true; 
+					}
+					else{
+						keyboard_situation.moveBackward.in = false;
+					}
+					break;
+
+				case 39: /*right*/
+				case 68: /*D*/ 
+					if(keyboard_situation.moveRight.enable){
+						keyboard_situation.moveRight.in = true; 
+					}
+					else{
+						keyboard_situation.moveRight.in = false;
+					}
+					break;
+			}
+		}
+
+		function onKeyUp(event) {
+			switch ( event.keyCode ) {
+				case 38: /*up*/
+				case 87: /*W*/ keyboard_situation.moveForward.in = false; break;
+
+				case 37: /*left*/
+				case 65: /*A*/ keyboard_situation.moveLeft.in = false; break;
+
+				case 40: /*down*/
+				case 83: /*S*/ keyboard_situation.moveBackward.in = false; break;
+
+				case 39: /*right*/
+				case 68: /*D*/ keyboard_situation.moveRight.in = false; break;
+			}
+		}
+
+		function checkKeyboardStatus() {
+			if(checkBorder(camera)==="in"){
+				keyboard_situation.moveForward.enable = true;
+				keyboard_situation.moveLeft.enable = true;
+				keyboard_situation.moveRight.enable = true;
+				keyboard_situation.moveBackward.enable = true;
+			}
+			else{
+				// if(keyboard_situation.moveForward.in) {
+				// 	keyboard_situation.moveForward.enable = false;
+				// }
+				// if(keyboard_situation.moveLeft.in){
+				// 	keyboard_situation.moveLeft.enable = false;
+				// }
+				// if(keyboard_situation.moveRight.in){
+				// 	keyboard_situation.moveRight.enable = false;
+				// }
+				// if(keyboard_situation.moveBackward.in){
+				// 	keyboard_situation.moveBackward.enable = false;
+				// }
+				var temp_save = {
+					x:camera.position.x,
+					z:camera.position.z 
+				};
+
+				var temp_point = {
+					x:temp_save.x,
+					z:temp_save.z 
+				};
+
+				var rotation_rad = camera.rotation.y - 0;
+				var cos_value = Math.cos(rotation_rad);	
+
+				moveSpeed = 0.15;
+				moveForward(temp_point,rotation_rad,cos_value);
+				if(checkBorder(temp_point)!=="in"){
+					keyboard_situation.moveForward.enable = false;
+				}
+				else{
+					keyboard_situation.moveForward.enable = true;
+				}
+				temp_point.x = temp_save.x;
+				temp_point.z = temp_save.z;
+				moveSpeed = 0.01;
+
+				moveSpeed = 0.15;
+				moveLeft(temp_point,rotation_rad,cos_value);
+				if(checkBorder(temp_point)!=="in"){
+					keyboard_situation.moveLeft.enable = false;
+				}
+				else{
+					keyboard_situation.moveLeft.enable = true;
+				}
+				temp_point.x = temp_save.x;
+				temp_point.z = temp_save.z;
+				moveSpeed = 0.01;
+
+				moveSpeed = 0.15;	
+				moveRight(temp_point,rotation_rad,cos_value);
+				if(checkBorder(temp_point)!=="in"){
+					keyboard_situation.moveRight.enable = false;
+				}
+				else{
+					keyboard_situation.moveRight.enable = true;
+				}
+				temp_point.x = temp_save.x;
+				temp_point.z = temp_save.z;
+				moveSpeed = 0.01;
+
+				moveSpeed = 0.15;
+				moveBackward(temp_point,rotation_rad,cos_value);
+				if(checkBorder(temp_point)!=="in"){
+					keyboard_situation.moveBackward.enable = false;
+				}
+				else{
+					keyboard_situation.moveBackward.enable = true;
+				}
+				temp_point.x = temp_save.x;
+				temp_point.z = temp_save.z;
+				moveSpeed = 0.01;
+
+			}
+		}
+
+		function keyboardUpdate(camera) {
+			var rotation_rad = camera.rotation.y - 0;
+			var cos_value = Math.cos(rotation_rad);
+
+			if(keyboard_situation.moveForward.in){
+				moveForward(camera,rotation_rad,cos_value);
+			}
+			else if(keyboard_situation.moveBackward.in){
+				moveBackward(camera,rotation_rad,cos_value);
+			}
+			else if(keyboard_situation.moveLeft.in){
+				moveLeft(camera,rotation_rad,cos_value);
+			}
+			else if(keyboard_situation.moveRight.in){
+				moveRight(camera,rotation_rad,cos_value);
+			}
+		}
+
+		function moveForward(obj,rotation_rad,cos_value) {
+			if(obj.x){
+				obj.z -= moveSpeed * cos_value;
+				obj.x -= Math.cos(Math.PI/2-rotation_rad) * moveSpeed;
+			}
+			else{
+				obj.position.z -= moveSpeed * cos_value;
+				obj.position.x -= Math.cos(Math.PI/2-rotation_rad) * moveSpeed;				
+			}
+		}
+
+		function moveBackward(obj,rotation_rad,cos_value) {
+			if(obj.x){
+				obj.z += moveSpeed * cos_value;
+				obj.x += Math.cos(Math.PI/2-rotation_rad) * moveSpeed;
+			}
+			else{
+				obj.position.z += moveSpeed * cos_value;
+				obj.position.x += Math.cos(Math.PI/2-rotation_rad) * moveSpeed;				
+			}
+		}
+
+		function moveLeft(obj,rotation_rad,cos_value) {
+			if(obj.x){
+				obj.z += Math.cos(Math.PI/2-rotation_rad) * moveSpeed;
+				obj.x -= moveSpeed * cos_value;
+			}
+			else{
+				obj.position.z += Math.cos(Math.PI/2-rotation_rad) * moveSpeed;
+				obj.position.x -= moveSpeed * cos_value;				
+			}
+		}
+		
+		function moveRight(obj,rotation_rad,cos_value) {
+			if(obj.x){
+				obj.z -= Math.cos(Math.PI/2-rotation_rad) * moveSpeed;
+				obj.x += moveSpeed * cos_value;
+			}
+			else{
+				obj.position.z -= Math.cos(Math.PI/2-rotation_rad) * moveSpeed;
+				obj.position.x += moveSpeed * cos_value;				
+			}			
+		}
+	</script>
+</head>
+<body onload="init()">
+	<div class="btn_line" id="bottom_helper">
+		<ul class="nav navbar-nav navbar-inverse large_ico">
+			<li>
+				<a id="show_hint"><span class="glyphicon glyphicon-question-sign" ></span></a>
+			</li>
+			<li>
+				<a id="operation_mode"><span class="glyphicon glyphicon-move"></span></a>
+			</li>
+			<li>
+				<a id="volume"><span class="glyphicon glyphicon-volume-up"></span></a>
+			</li>
+			<li>
+				<a><span class="glyphicon glyphicon-th-large"></span></a>
+			</li>
+			<li>
+				<a id="full_screen"><span class="glyphicon glyphicon-fullscreen"></span></a>
+			</li>
+			<li>
+				<a><span class="glyphicon glyphicon-floppy-open"></span></a>
+			</li>
+		</ul>
+	</div>
+
+	<div id="hint_div">
+		<h4><span class="glyphicon glyphicon-question-sign"></span>&nbsp&nbsphelp</h4>
+		<h4><span class="glyphicon glyphicon-move"></span>&nbsp&nbspoperation mode</h4>
+		<h4><span class="glyphicon glyphicon-volume-up"></span>&nbsp&nbspsound</h4>
+		<h4><span class="glyphicon glyphicon-fullscreen"></span>&nbsp&nbspfull screen</h4>
+	</div>
+
+	<audio id="audio_player" autoplay="autoplay" src="audio/test.mp3"></audio>
+</body>
+</html>
